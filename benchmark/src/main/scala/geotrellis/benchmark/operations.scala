@@ -161,10 +161,23 @@ case class BTileForceHistogram(r:Op[Raster]) extends BReducer1(r)({
 /**
  *
  */
-case class BTileHistogram(r:Op[Raster]) extends BReducer1(r)({
-  r => FastMapHistogram.fromRaster(r)
+case class BTileHistogram(r:Op[Raster]) extends BReducer2(r)({
+  r => {
+    //println("executing mapper in BTileHistogram")
+    val hist = r.force.data match {
+      case x:IntConstant => FastMapHistogram()
+      case y => FastMapHistogram.fromRaster(r)
+    }
+    //println("hist is: " + hist.toJSON)
+    hist
+  }
 })({
-  hs => FastMapHistogram.fromHistograms(hs)
+  hs => { 
+    //println("executing reducer in BTileHistogram")
+    val h = FastMapHistogram.fromHistograms(hs)
+    //println("h is: " + h.toJSON)
+    h
+  }
 })
 
 case class BUntiledHistogram(r:Op[Raster]) extends Op1(r) ({
@@ -173,7 +186,7 @@ case class BUntiledHistogram(r:Op[Raster]) extends Op1(r) ({
   }
 })
 
-case class BTileMin(r:Op[Raster]) extends BReducer1(r)({
+case class BTileMin(r:Op[Raster]) extends BReducer2(r)({
   r => {
     var zmin = Int.MaxValue
     r.foreach {
@@ -183,6 +196,36 @@ case class BTileMin(r:Op[Raster]) extends BReducer1(r)({
   }
 })({
   zs => zs.reduceLeft((x,y) => min(x,y))
+})
+
+case class TileSum(r:Op[Raster]) extends BReducer2(r) ({
+  r => {
+    r.data match {
+      case d:IntConstant => {
+        0
+      }
+      case _ => {
+        var sum = 0
+        var cells = 0
+        var nodataCells = 0
+        println("tilesum foreach: " + r.data)
+        r.foreach {
+          z => {
+            if (z != NODATA) {
+              sum = sum + z
+              cells = cells + 1 
+            } else {
+              nodataCells += 1
+            } 
+          }
+        }
+        println("TileSum foreach: sum: %d, cells: %d, nodata: %d".format(sum,cells,nodataCells))
+        sum
+      } 
+    }
+  }
+})({
+  zs =>  { (0 /: zs) (_ + _)  }
 })
 
 abstract class BReducer1[B:Manifest, C:Manifest](r:Op[Raster])(handle:Raster => B)(reducer:List[B] => C) extends Op[C] {
@@ -197,8 +240,60 @@ abstract class BReducer1[B:Manifest, C:Manifest](r:Op[Raster])(handle:Raster => 
   def init(r:Raster) = {
     r.data match {
       //case _ => runAsync('reduce :: r.getTileList.map(mapper))
-      case _:TiledRasterData => runAsync('reduce :: r.getTileOpList.map(mapper))
+      case _:TiledRasterData => {
+        runAsync('reduce :: r.getTileOpList.map(mapper))
+      }
       case _ => Result(reducer(handle(r) :: Nil))
+    }
+  }
+
+  def mapper(r:Op[Raster]):Op[B] = logic.Do(r)(handle)
+}
+
+abstract class BReducer2[B:Manifest, C:Manifest](r:Op[Raster])(handle:Raster => B)(reducer:List[B] => C) extends Op[C] {
+  def _run(context:Context) = {
+    println("in BReducer2: r is: " + r)
+    runAsync('init :: r :: Nil)
+  }
+  val nextSteps:Steps = {
+    //case _ => Result(null.asInstanceOf[C])
+    case 'init :: (r:Raster) :: Nil => init(r)
+    case 'reduce :: (bs:List[_]) => Result(reducer(bs.asInstanceOf[List[B]]))
+    case 'runGroup :: (oldResults:List[_]) :: (bs:List[_]) :: (newResults:List[_]) => {
+      //println("bs: " + bs.toString)
+      //println("rest: " + rest.toString)
+      //println("rest head: " + (rest.head).asInstanceOf[FastMapHistogram].getTotalCount)
+      val results = oldResults ::: newResults
+      bs match {
+        case Nil => Result(reducer(results.asInstanceOf[List[B]]))
+        case (head:List[_]) :: tail => { 
+          println("run next batch")
+          runAsync( 'runGroup :: results :: tail :: head)
+        }
+      } 
+      //Result(reducer(rest.asInstanceOf[List[B]]))
+    }
+  }
+
+  def init(r:Raster) = {
+    println("breducer2: init: r is: " + r)
+    r.data match {
+      //case _ => runAsync('reduce :: r.getTileList.map(mapper))
+      case _:TiledRasterData => {
+        println("BReducer2: init() with TiledRasterData")
+        val ops = r.getTileOpList.map(mapper)
+        println("ops is: " + ops)
+        val groups = ops grouped(30) toList
+        val tail = groups.tail
+        val head = groups.head 
+        //println("ops to run: " + head )
+        runAsync('runGroup :: List[B]() :: tail :: head)
+        //runAsync('reduce :: r.getTileOpList.map(mapper))
+      }
+      case _ => {
+        println("BReducer2: init() without TiledRasterData")
+        Result(reducer(handle(r) :: Nil))
+      }
     }
   }
 

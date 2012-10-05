@@ -20,8 +20,8 @@ import geotrellis.raster.op.local._
 import geotrellis.raster.op.tiles._
 import geotrellis.statistics.op._
 import geotrellis.raster.op.extent.GetRasterExtent
-import geotrellis.statistics.op.stat.GetHistogram
-
+import geotrellis.statistics.op.stat.{GetHistogram,TiledPolygonalZonalCount,PolygonalZonalCount}
+import geotrellis.vector.op.geometry.SimplePolygon
 import com.google.caliper.Benchmark
 import com.google.caliper.Param
 import com.google.caliper.Runner 
@@ -365,7 +365,7 @@ object BigMinTiled {
       println("Starting test.")
       val start = System.currentTimeMillis
       //test.min
-      test.histogram
+      //test.histogram
       val elapsed = System.currentTimeMillis - start
       println("Test complete: %d millis" format (elapsed))
       val cells = tileN * 2000L * tileN * 2000L
@@ -406,9 +406,163 @@ class BigMinTiled extends MyBenchmark{
   def timeHistogram(reps:Int) = run(reps)(histogram)
   def histogram = {
     val h = server.run(tiledHistogramOp)
+    //println("Found histogram: %s" format (h.toJSON))
+  }
+}
+
+object Carbon {
+  def main(args:Array[String]) = {
+    //val tileN = args(0).toInt
+    val test = new Carbon
+    //test.tileN = tileN
+    val runs = 2
+    println("Starting setup.")
+    test.setUp()
+    for (i <- 0 until 1) {
+      println("Starting test.")
+      val start = System.currentTimeMillis
+      val result = test.min
+      println("result is: " + result)
+      //test.histogram
+      val elapsed = System.currentTimeMillis - start
+      println("Test complete: %d millis" format (elapsed))
+      //val cells = tileN * 2000L * tileN * 2000L
+      //val rate = cells / elapsed / 1000L
+      //println("Rate: %d k/ms" format (rate) )
+    }
+
+    test.server.shutdown
+  }
+}
+
+class Carbon extends MyBenchmark{ 
+  var tiledMinOp:Op[_] = null
+  var tiledHistogramOp:Op[Histogram] = null
+
+  var tileN = 10
+
+  override def setUp() {
+    server = initServer()
+    println("Setting up carbon raster")
+    val layout = TileLayout(20,10,2048,2048)
+    val e = Extent(-180.00446428570001, -90, 180.004463133699971, 90.008927995399972)
+    val re = RasterExtent(e, 0.0089285714,0.0089285714, 40321, 20161)
+    val start = System.currentTimeMillis
+    
+    //val tileSetRD = TileSetRasterData("/tmp/carbon_2048", "name", TypeInt, layout, re, server)
+    val tileSetRD = TileArrayRasterData("/tmp/carbon_2048", "name", TypeInt, layout, re, server)
+    println("Time to load tiles: " + (System.currentTimeMillis - start) + " ms")
+    val raster = Raster(tileSetRD, re)
+    //tiledHistogramOp = BTileHistogram(AddConstant(raster,2))
+    tiledHistogramOp = BTileHistogram(raster)
+
+/*
+    val pOp = SimplePolygon(
+      Array( (-74.6229572569999,41.5930024740001),
+  (-74.6249086829999,41.5854607480001),
+  (-74.6087045219999,41.572877582),
+  (-74.6396698609999,41.5479203780001),
+  (-74.6134071899999,41.5304959030001),
+  (-74.6248611209999,41.5210940920001),
+  (-74.6080037309999,41.510192955),
+  (-74.61917188,41.500007054),
+  (-74.6868377089999,41.5507426980001),
+  (-74.6752089579999,41.5646628200001),
+  (-74.6776005779999,41.573316585),
+  (-74.6637320329999,41.5691605160001),
+(-74.6623717069999,41.5770289280001),
+(-74.6558314389999,41.552671724),
+(-74.6494842519999,41.5467347190001),
+(-74.6459184919999,41.565179846),
+(-74.6344289929999,41.5694043560001),
+(-74.6229572569999,41.5930024740001)
+  ),1
+    )
+*/
+//41.49553500549999,-74.687500049,41.59374929089998,-74.6071429064),0d
+/*    val pOp = SimplePolygon(Array( (-74.687500049,41.54464214819998), (-74.64775188999994, 41.59374929089998), (-74.6071429064,41.54464214819998),  (-74.64775188999994, 41.49553500549999),  (-74.687500049,41.54464214819998) ), 1)
+*/
+    val myStart = System.currentTimeMillis
+
+    println("before simple polygon")
+    //val pOp = SimplePolygon(Array( (-130.2, 59.9),(-131.4,17.5),(-54.0,17.6),(-58.8, 59.5),(-130.2,59.9) ),1)
+    val pw = 0.0089285714
+    val x = -81.786
+    val y = 81.076
+    val pOp = SimplePolygon(Array(
+      (x - pw,y), // left
+      (x,y + pw),
+      (x + pw, y),
+      (x,y - pw),
+      (x- pw, y)
+    ), 1)
+    val p = server.run(pOp)
+    println("after simple polygon")
+   val peOp = geotrellis.vector.op.extent.PolygonExtent(pOp)
+    //val pExtent=server.run(pOp)
+    val newE, Extent(xmin, ymin, xmax, ymax) = server.run(peOp)
+
+    //TODO: CropRasterExtent should take an Extent
+    val newExtentOp = extent.CropRasterExtent(GetRasterExtent(raster), xmin, ymin, xmax, ymax)
+    val pExtent = server.run(newExtentOp)
+    println("after crop raster extent")
+    println("loaded new extent: " + pExtent)
+
+    println("before croppedRaster: " + System.currentTimeMillis)
+    val croppedRaster = CroppedRaster(raster,pExtent.extent)
+    println("after croppedRaster, before mutable: " + System.currentTimeMillis)
+
+//    val burnOp = geotrellis.vector.op.data.RasterizePolygon(CreateRaster(croppedRaster.rasterExtent),pOp)
+
+    //val burnRaster = server.run(burnOp)
+    //println("burned raster data: " + burnRaster.data)
+    //println("burned raster: " + burnRaster.rasterExtent)
+    //println("burned raster cols: " + burnRaster.rasterExtent.cols)
+    //println("burned raster, 0,0: " + burnRaster.get(0,0))
+    //println(burnRaster.asciiDraw)
+
+    //val croppedRasterData = croppedRaster.data.mutable
+    //val newRaster = croppedRasterData(croppedRaster,croppedRaster.rasterData)
+    //println("before croppedRaster.force")
+    //val c2 = croppedRaster.force
+    //println("after croppedRaster.data.mutable: " + c2)
+    //println("c2: " + c2.asciiDraw)
+    //println("cropped raster draw: " + croppedRaster.asciiDraw) 
+    //val cRaster2 = server.run(croppedRaster)
+  
+    //println(croppedRaster.data)
+    //val cRaster2 = croppedRaster.getTileList.head
+    //println("cRaster2: " + cRaster2.asciiDraw)
+//    val inverseOp = InverseMask(burnRaster, c2, 1, NODATA)
+    //val combined = server.run(inverseOp)
+    //println("combined: " + combined.asciiDraw)
+    var preCount = System.currentTimeMillis
+    println("before polygonzonal count: " + System.currentTimeMillis)
+    val countOp = TiledPolygonalZonalCount(p, croppedRaster) //raster)
+    //val countOp = TiledPolygonalZonalCount(p, croppedRaster)
+    println("after polygonzonal count: " + System.currentTimeMillis)
+    val elapsed = System.currentTimeMillis - myStart
+    println("elapsed setup: " + elapsed)
+    println("elapsed count: " + (System.currentTimeMillis - preCount))
+
+    tiledMinOp = countOp
+   // tiledMinOp = stats.Statistics(inverseOp)
+  }
+  def timeMin(reps:Int) = run(reps)(min)
+  def min = { 
+    val min = server.run(tiledMinOp)
+    println("result is: %s".format(min))
+    min
+    //println("Found min: %d" format (min))
+  }
+  
+  def timeHistogram(reps:Int) = run(reps)(histogram)
+  def histogram = {
+    val h = server.run(tiledHistogramOp)
     println("Found histogram: %s" format (h.toJSON))
   }
 }
+
 
 
 object MinTiled extends MyRunner(classOf[MinTiled])
