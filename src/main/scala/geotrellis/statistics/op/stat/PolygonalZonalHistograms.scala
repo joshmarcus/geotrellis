@@ -6,52 +6,71 @@ import geotrellis.geometry.rasterizer.Rasterizer
 import geotrellis.data._
 import geotrellis.statistics._
 import geotrellis.raster.IntConstant
-
 import scala.math.{ max, min }
+import geotrellis.raster.TileArrayRasterData
+import geotrellis.raster.TiledRasterData
 
-case class TiledPolygonalZonalCount(p: Polygon, r: Op[Raster]) extends raster.op.tiles.ThoroughputLimitedReducer1(r)({
+object TiledPolygonalZonalCount {
+  def createTileSums(trd:TiledRasterData, re:RasterExtent) = {
+    val tiles = trd.getTileList(re)
+    tiles map { r => (r.rasterExtent, sumRaster(r))} toMap
+  }
+  
+  def sumRaster (r:Raster):Long =  {
+    var sum = 0L
+    r.foreach( (x) => if (x != NODATA && x > 0) sum = sum + x )
+    sum
+  }
+
+  def rasterize (cb:(Int) => Unit, ext: RasterExtent, polygons:Array[Polygon]) = {
+
+  }            
+}
+
+case class TiledPolygonalZonalCount(p: Polygon, r: Op[Raster], tileSums:Map[RasterExtent,Long] = Map(), threshold:Int = 30) extends raster.op.tiles.ThoroughputLimitedReducer1(r, threshold)({
   r =>
     {
-      println("in tiled polygonzonalcount, raster is: " + r)
-      println("raster extent is: " + r.rasterExtent)
       val r2 = r.force
       val s: Long = r2.data match {
-        case x: IntConstant => {
-          println("Empty tile")
+        case x: IntConstant if x.n == NODATA => { // TODO: test for NODATA 
+          //println("empty tile")
           0L
         }
         case rdata: ArrayRasterData => {
-          println("Non-empty tile")
           val tileExtent = r.rasterExtent.extent.asFeature(())
           val jtsPolygon = p.jts
           val jtsExtent = tileExtent.geom
           if (jtsPolygon.contains(jtsExtent)) {
-            println("tile is contained by polygon")
-            println("do something else here")
-            1L
+            tileSums.get(r.rasterExtent).getOrElse( {
+            var s = 0L
+            rdata.foreach((x:Int) => if (s != NODATA) s = s + x)
+            s
+            
+            }
+          )
+          
           } else if (jtsPolygon.disjoint(jtsExtent)) {
             val w = new com.vividsolutions.jts.io.WKTWriter()
-            println(w.write(jtsExtent))
-            println(w.write(jtsPolygon))
+            //println(w.write(jtsExtent))
+            //println(w.write(jtsPolygon))
   
-            println("tile is disjoint from polygon!")
-            println("jtsExtent is: " + jtsExtent)
-            println("jtsPolygon is: " + jtsPolygon)
+            //println("tile is disjoint from polygon!")
+            //println("jtsExtent is: " + jtsExtent)
+            //println("jtsPolygon is: " + jtsPolygon)
             0L
           } else {
-            println("tile is *not* disjoint")
-            val tilePolygon = jtsPolygon.intersection(jtsExtent)
+            //println("tile is *not* disjoint")
+            val tilePolygonOrig = jtsPolygon.intersection(jtsExtent)
+            val tilePolygon = com.vividsolutions.jts.simplify.TopologyPreservingSimplifier.simplify(tilePolygonOrig, r.rasterExtent.cellwidth)
             val rasterExtent = r.rasterExtent
             val p2 = tilePolygon match {
               case t: com.vividsolutions.jts.geom.Polygon => {
-                println("we have a polygon")
+                //println("we have a polygon")
                 val pp = new Polygon(t, 1, null)
-                val w = new com.vividsolutions.jts.io.WKTWriter()
-                println("tile: " + w.write(jtsExtent) + " /// polygon: " + w.write(t))
-            	pp
+                //val w = new com.vividsolutions.jts.io.WKTWriter()
+                //println("tile: " + w.write(jtsExtent) + " /// polygon: " + w.write(t))
+            	  pp
               }
-
-            
               case x => {
                 //println("tilePolygon is: " + x)
                 throw new Exception("tilePolygon is: " + x)
@@ -61,7 +80,7 @@ case class TiledPolygonalZonalCount(p: Polygon, r: Op[Raster]) extends raster.op
             var sum: Long = 0L
             val cb = new ARasterizer.CB[Long] {
               def apply(d: Int, value: Int, oldSum: Long): Long = {
-                //println("in apply of rasterizer callback")
+                //println("in apply of rasterizer callback: " + d)
                 val inp = rdata(d)
                 if (inp != NODATA) {
                   sum += inp.asInstanceOf[Long]
@@ -69,18 +88,20 @@ case class TiledPolygonalZonalCount(p: Polygon, r: Op[Raster]) extends raster.op
                 sum
               }
             }
+            //TiledPolygonalZonalCount.rasterize(cb, 0L, rasterExtent, Array(p2))
             ARasterizer.rasterize(cb, 0L, rasterExtent, Array(p2))
             sum
           }
         }
       }
-      println("tile result is: " + s)
+      //println("tile result is: " + s)
       s
       //var histmap = Array.ofDim[Int](1)
     }
 })({
   ints => ints.reduceLeft((x, y) => x + y)
 })
+
 
 /**
  * Given a raster and an array of polygons, return a histogram summary of the cells
@@ -129,19 +150,19 @@ case class PolygonalZonalCount(ps: Array[Polygon], r: Op[Raster]) extends Op[Lon
     val (col1, row1) = geo.mapToGrid(xmin, ymax)
     val (col2, row2) = geo.mapToGrid(xmax, ymin)
 
-    println("Elapsed: %d" format (System.currentTimeMillis() - startTime))
+    //println("Elapsed: %d" format (System.currentTimeMillis() - startTime))
 
     val c = geo.cols
     var r = geo.rows
 
-    println("Elapsed (data 0): %d" format (System.currentTimeMillis() - startTime))
+    //println("Elapsed (data 0): %d" format (System.currentTimeMillis() - startTime))
 
     // burn our polygons onto a raster
     // val zones = Raster.empty(geo)
-    println("Elapsed (empty): %d" format (System.currentTimeMillis() - startTime))
+    //println("Elapsed (empty): %d" format (System.currentTimeMillis() - startTime))
     // val zdata = zones.data.asArray.getOrElse(sys.error("need array"))
 
-    println("Elapsed (data): %d" format (System.currentTimeMillis() - startTime))
+    //println("Elapsed (data): %d" format (System.currentTimeMillis() - startTime))
 
     // Accumulate based on polygon value
     // uses array based backend
@@ -150,14 +171,14 @@ case class PolygonalZonalCount(ps: Array[Polygon], r: Op[Raster]) extends Op[Lon
       def apply(d: Int, value: Int, amap: Long) = {
         var inp = rdata(d).asInstanceOf[Long]
         if (inp < 0 && inp != NODATA) {
-          println("negative value: %d".format(inp))
+          //println("negative value: %d".format(inp))
           inp = NODATA.asInstanceOf[Long]
         }
 
         if (inp != NODATA) {
           total += rdata(d)
           //amap(value) += rdata(d)
-          println("in apply, with value: %d, rdata(d): %d, total: %d".format(value, rdata(d), total))
+          //println("in apply, with value: %d, rdata(d): %d, total: %d".format(value, rdata(d), total))
         }
         total
         //amap
@@ -167,8 +188,8 @@ case class PolygonalZonalCount(ps: Array[Polygon], r: Op[Raster]) extends Op[Lon
     //ARasterizer.rasterize(cb, histmap, geo, polygons.toArray)
     ARasterizer.rasterize[Long](cb, total, geo, polygons.toArray)
     //Rasterizer.rasterize(zones, polygons.toArray)
-    println("Elapsed (after burn): %d" format (System.currentTimeMillis() - startTime))
-    println("(total is: %s".format(total))
+    //println("Elapsed (after burn): %d" format (System.currentTimeMillis() - startTime))
+    //println("(total is: %s".format(total))
     Result(total)
     // iterate over the cells in our bounding box; determine its zone, then
     // looking in the raster for a value to add to the zonal histogram.

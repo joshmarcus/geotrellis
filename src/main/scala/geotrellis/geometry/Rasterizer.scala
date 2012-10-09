@@ -20,8 +20,8 @@ object ARasterizer {
      def apply(d: Int, z: Int, t: S):S
    }
 
-  //val DBG = 719
   val DBG = -1
+  //val DBG = -1
 
   /**
    * quantize an array of polygons based on a raster's extent, and then draw
@@ -149,7 +149,7 @@ object ARasterizer {
 
   /**
    * Process an array of intercepts, creating synthetic intercepts out of
-   * the relevant combinatios of simple intercepts.
+   * the relevant combinations of simple intercepts.
    *
    * Examples:
    *   Start + End -> Hinge
@@ -162,7 +162,6 @@ object ARasterizer {
     while(i < intercepts2.length - 1) {
       val c1 = intercepts2(i)
       val c2 = intercepts2(i + 1)
-      //printf("  handling %s and %s (%s)\n", c1, c2, intercepts2)
       
       val update:Option[Intercept] = (c1, c2) match {
         case (InterceptStart(x1), InterceptStart(x2)) => Some(InterceptSpikeHorizontal(x1, x2))
@@ -183,7 +182,9 @@ object ARasterizer {
         case (InterceptEHorizontal(x1, _), InterceptEnd(x2)) => Some(InterceptSpikeHorizontal(x1, x2))
         case (InterceptEHorizontal(x1, _), InterceptStart(x2)) => Some(InterceptFlowHorizontal(x1, x2))
         case (InterceptEHorizontal(x1, _), InterceptHorizontal(_, x2)) => Some(InterceptEHorizontal(x1, x2))
-        case (InterceptEHorizontal(_, _), _) => throw new Exception("unpossible4()")
+        case (InterceptEHorizontal(_, _), _) => {
+          throw new Exception("unpossible4") 
+        }
         
         //case (InterceptHorizontal(_, _), _) => throw new Exception("unpossible5(%d): %s %s".format(i, intercepts.toList, intercepts2.toList))
         case (InterceptHorizontal(_, _), _) => Some(c2)

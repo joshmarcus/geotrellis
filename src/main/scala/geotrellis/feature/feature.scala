@@ -173,6 +173,8 @@ object Polygon {
 
   /**
    * Create a polygon using a one-dimensional array with alternating x and y values.
+   *
+   * The values are the coordinates of the exterior ring.
    */
   def apply[D](coords:Array[Double], data:D):Polygon[D] with Dim2 = {
     val jtsCoords = (0 until (coords.length / 2)).map { 
@@ -180,6 +182,19 @@ object Polygon {
         new jts.Coordinate(coords(i), coords(i+1))
     }.toArray
     Polygon(jtsCoords, data)
+  }
+
+  /**
+   * Create a polygon using an array of rings, the first being the exterior ring.
+   * 
+   * Each ring array is an array of two element coordinate arrays, e.g. Array(x,y)
+   */ 
+  def apply[D](coords:Array[Array[Array[Double]]], data:D):Polygon[D] with Dim2 = {
+    val exteriorRing = coords(0)
+    val jtsCoords = (0 until exteriorRing.length).map {
+      (i) => new jts.Coordinate(exteriorRing(i)(0), exteriorRing(i)(1))
+    }.toArray
+    Polygon(jtsCoords,data)
   }
 
   /**

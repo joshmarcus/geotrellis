@@ -418,7 +418,7 @@ object Carbon {
     val runs = 2
     println("Starting setup.")
     test.setUp()
-    for (i <- 0 until 1) {
+    for (i <- 0 until 3) {
       println("Starting test.")
       val start = System.currentTimeMillis
       val result = test.min
@@ -444,20 +444,26 @@ class Carbon extends MyBenchmark{
   override def setUp() {
     server = initServer()
     println("Setting up carbon raster")
-    val layout = TileLayout(20,10,2048,2048)
+    //val layout = TileLayout(20,10,2048,2048)
+    val layout = TileLayout(40,20,1024,1024)
     val e = Extent(-180.00446428570001, -90, 180.004463133699971, 90.008927995399972)
     val re = RasterExtent(e, 0.0089285714,0.0089285714, 40321, 20161)
     val start = System.currentTimeMillis
     
     //val tileSetRD = TileSetRasterData("/tmp/carbon_2048", "name", TypeInt, layout, re, server)
-    val tileSetRD = TileArrayRasterData("/tmp/carbon_2048", "name", TypeInt, layout, re, server)
+    val tileSetRD = TileArrayRasterData("/tmp/carbon_1024", "name", TypeInt, layout, re, server)
     println("Time to load tiles: " + (System.currentTimeMillis - start) + " ms")
     val raster = Raster(tileSetRD, re)
+
+    val tileSumStart = System.currentTimeMillis
+    println("before creating tile sums")
+    val tileSums = TiledPolygonalZonalCount.createTileSums(tileSetRD, re)
+    println("after creating tile sums: " + ( System.currentTimeMillis - tileSumStart ))
     //tiledHistogramOp = BTileHistogram(AddConstant(raster,2))
     tiledHistogramOp = BTileHistogram(raster)
 
-/*
-    val pOp = SimplePolygon(
+
+    val pOp3 = SimplePolygon(
       Array( (-74.6229572569999,41.5930024740001),
   (-74.6249086829999,41.5854607480001),
   (-74.6087045219999,41.572877582),
@@ -478,26 +484,29 @@ class Carbon extends MyBenchmark{
 (-74.6229572569999,41.5930024740001)
   ),1
     )
-*/
+
 //41.49553500549999,-74.687500049,41.59374929089998,-74.6071429064),0d
-/*    val pOp = SimplePolygon(Array( (-74.687500049,41.54464214819998), (-74.64775188999994, 41.59374929089998), (-74.6071429064,41.54464214819998),  (-74.64775188999994, 41.49553500549999),  (-74.687500049,41.54464214819998) ), 1)
-*/
+    val pOp4 = SimplePolygon(Array( (-74.687500049,41.54464214819998), (-74.64775188999994, 41.59374929089998), (-74.6071429064,41.54464214819998),  (-74.64775188999994, 41.49553500549999),  (-74.687500049,41.54464214819998) ), 1)
+
     val myStart = System.currentTimeMillis
 
-    println("before simple polygon")
-    //val pOp = SimplePolygon(Array( (-130.2, 59.9),(-131.4,17.5),(-54.0,17.6),(-58.8, 59.5),(-130.2,59.9) ),1)
+    //println("before simple polygon")
+    val pOp1 = SimplePolygon(Array( (-130.2, 59.9),(-131.4,17.5),(-54.0,17.6),(-58.8, 59.5),(-130.2,59.9) ),1)
     val pw = 0.0089285714
     val x = -81.786
     val y = 81.076
-    val pOp = SimplePolygon(Array(
+    val pOp2 = SimplePolygon(Array(
       (x - pw,y), // left
       (x,y + pw),
       (x + pw, y),
       (x,y - pw),
       (x- pw, y)
     ), 1)
+
+
+    val pOp = pOp1
     val p = server.run(pOp)
-    println("after simple polygon")
+   // println("after simple polygon")
    val peOp = geotrellis.vector.op.extent.PolygonExtent(pOp)
     //val pExtent=server.run(pOp)
     val newE, Extent(xmin, ymin, xmax, ymax) = server.run(peOp)
@@ -505,12 +514,12 @@ class Carbon extends MyBenchmark{
     //TODO: CropRasterExtent should take an Extent
     val newExtentOp = extent.CropRasterExtent(GetRasterExtent(raster), xmin, ymin, xmax, ymax)
     val pExtent = server.run(newExtentOp)
-    println("after crop raster extent")
-    println("loaded new extent: " + pExtent)
+    //println("after crop raster extent")
+    //println("loaded new extent: " + pExtent)
 
-    println("before croppedRaster: " + System.currentTimeMillis)
+    //println("before croppedRaster: " + System.currentTimeMillis)
     val croppedRaster = CroppedRaster(raster,pExtent.extent)
-    println("after croppedRaster, before mutable: " + System.currentTimeMillis)
+    //println("after croppedRaster, before mutable: " + System.currentTimeMillis)
 
 //    val burnOp = geotrellis.vector.op.data.RasterizePolygon(CreateRaster(croppedRaster.rasterExtent),pOp)
 
@@ -538,7 +547,7 @@ class Carbon extends MyBenchmark{
     //println("combined: " + combined.asciiDraw)
     var preCount = System.currentTimeMillis
     println("before polygonzonal count: " + System.currentTimeMillis)
-    val countOp = TiledPolygonalZonalCount(p, croppedRaster) //raster)
+    val countOp = TiledPolygonalZonalCount(p, croppedRaster,tileSums) //raster)
     //val countOp = TiledPolygonalZonalCount(p, croppedRaster)
     println("after polygonzonal count: " + System.currentTimeMillis)
     val elapsed = System.currentTimeMillis - myStart
