@@ -1,0 +1,12 @@
+import geotrellis._
+import geotrellis.process._
+import geotrellis.raster.Tiler
+
+
+val l = io.LoadRasterExtentFromFile("/var/trellis/viz/w2.arg")
+val re = TestServer().run(l)
+Tiler.writeTilesWithGdal(256,256,re,"name",TypeInt,"/tmp/carbon_256/","/var/trellis/viz/w2.arg")
+
+//RasterExtent(Extent(-180.0044642857,-90.0,180.00446313369997,90.00892799539997),0.0089285714,0.0089285714,40321,20161)
+
+
