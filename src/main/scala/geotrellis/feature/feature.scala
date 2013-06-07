@@ -17,7 +17,7 @@ import geotrellis._
  * The data component is generic.
  *
  */
-trait Feature[+G <: jts.Geometry, D] {
+trait Feature[+G <: jts.Geometry, D] extends Serializable {
 
   /**
    * Returns geometry as a JTS Geometry object.
