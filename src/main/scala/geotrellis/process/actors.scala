@@ -219,6 +219,21 @@ case class Worker(val server: Server) extends WorkerLike {
 
   // Actor event loop
   def receive = {
+    case RunOperation(DispatchedOperation(op, newDispatcher), pos, client, Some(dispatcher)) => {
+      _id = op.name
+      startTime = time()
+      val geotrellisContext = new Context(server)
+      try {
+        val z = op.run(geotrellisContext)
+        handleResult(pos, client, z, Some(geotrellisContext.timer), newDispatcher)
+      } catch {
+        case e:Throwable => {
+          val error = StepError.fromException(e)
+          System.err.println("Operation failed, with exception: %s\n\nStack trace:\n%s\n", error.msg,error.trace)
+          handleResult(pos, client, error, Some(geotrellisContext.timer), dispatcher)
+        }
+      } 
+    }
     case RunOperation(op, pos, client, Some(dispatcher)) => {
       //_id = op.toString
       _id = op.name

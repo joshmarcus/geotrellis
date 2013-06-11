@@ -8,7 +8,7 @@ object GeotrellisBuild extends Build {
   lazy val root = Project("root", file(".")).settings(
     organization := "com.azavea.geotrellis",
     name := "geotrellis",
-    version := "0.8.1",
+    version := "0.8.3-SNAPSHOT",
     scalaVersion := "2.10.1",
     
     scalacOptions ++= Seq("-deprecation", 
