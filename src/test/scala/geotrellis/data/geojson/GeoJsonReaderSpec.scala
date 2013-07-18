@@ -10,6 +10,7 @@ import org.scalatest.matchers.ShouldMatchers
 class GeoJsonReaderSpec extends FunSpec with MustMatchers with ShouldMatchers {
   describe("GeoJsonReader") {
 
+  
     // Polygon feature geojson example
     val geojsonPolygonFeature = """
 {"type":"Feature", "properties":{}, "geometry":{"type":"Polygon", "coordinates":[[[-102.89062544703, 42.447921037674], [-103.59375044703, 36.822921037674], [-94.453125447035, 35.416671037674], [-90.937500447035, 40.338546037674], [-96.562500447035, 44.557296037674], [-102.89062544703, 42.447921037674]]]}, "crs":{"type":"name", "properties":{"name":"urn:ogc:def:crs:OGC:1.3:CRS84"}}}
@@ -20,8 +21,9 @@ class GeoJsonReaderSpec extends FunSpec with MustMatchers with ShouldMatchers {
 {"type":"Polygon", "coordinates":[[[-102.89062544703, 42.447921037674], [-103.59375044703, 36.822921037674], [-94.453125447035, 35.416671037674], [-90.937500447035, 40.338546037674], [-96.562500447035, 44.557296037674], [-102.89062544703, 42.447921037674]]]}
  """
 
+    // Some examples below from http://www.geojson.org/geojson-spec.html
+
     // MultiPolygon geometry geojson example
-    // from http://www.geojson.org/geojson-spec.html
     val geojsonMultiPolygonGeometry = """
 { "type": "MultiPolygon",
   "coordinates": [
@@ -33,13 +35,11 @@ class GeoJsonReaderSpec extends FunSpec with MustMatchers with ShouldMatchers {
 """
 
   // Point geometry geojson example
-  // from http://www.geojson.org/geojson-spec.html
   val geojsonPointGeometry = """
 { "type": "Point", "coordinates": [100.0, 0.0] }
 """
 
   // MultiPoint geometry geojson example
-  // from http://www.geojson.org/geojson-spec.html
   val geojsonMultiPointGeometry = """
 { "type": "MultiPoint",
   "coordinates": [ [100.0, 0.0], [101.0, 1.0] ]
@@ -47,7 +47,6 @@ class GeoJsonReaderSpec extends FunSpec with MustMatchers with ShouldMatchers {
 """
   
   // LineString geometry geojson example
-  // from http://www.geojson.org/geojson-spec.html
   val geojsonLineStringGeometry = """
 { "type": "LineString",
   "coordinates": [ [100.0, 0.0], [101.0, 1.0] ]
@@ -60,16 +59,53 @@ class GeoJsonReaderSpec extends FunSpec with MustMatchers with ShouldMatchers {
   "coordinates": [ [100.0, 0.0], [101.0, 1.0], [101.0, 7.0], [150.0, 10.0]]
   }
 """
-
-  // MultiLineString geometry geojson example
-  // from http://www.geojson.org/geojson-spec.html 
+  // MultiLine string example
   val geojsonMultiLineStringGeometry = """
 { "type": "MultiLineString",
   "coordinates": [
       [ [100.0, 0.0], [101.0, 1.0] ],
       [ [102.0, 2.0], [103.0, 3.0] ]
     ]
+}
+"""
+
+  // FeatureCollection geometry example
+  val geojsonFeatureCollection = """
+{ "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature",
+      "geometry": {"type": "Point", "coordinates": [102.0, 0.5]},
+      "properties": {"prop0": "value0"}
+      },
+    { "type": "Feature",
+      "geometry": {
+        "type": "LineString",
+        "coordinates": [
+          [102.0, 0.0], [103.0, 1.0], [104.0, 0.0], [105.0, 1.0]
+          ]
+        },
+      "properties": {
+        "prop0": "value0",
+        "prop1": 0.0
+        }
+      },
+    { "type": "Feature",
+       "geometry": {
+         "type": "Polygon",
+         "coordinates": [
+           [ [100.0, 0.0], [101.0, 0.0], [101.0, 1.0],
+             [100.0, 1.0], [100.0, 0.0] ]
+           ]
+       },
+       "properties": {
+         "prop0": "value0",
+         "prop1": {"this": "that"}
+         }
+       }
+     ]
+   }
   }"""
+
 
     it("should parse a Polygon feature") {
       val result = GeoJsonReader.parse(geojsonPolygonFeature)
@@ -115,6 +151,13 @@ class GeoJsonReaderSpec extends FunSpec with MustMatchers with ShouldMatchers {
     it ("should parse a MultiLineString geometry") {
       val result = GeoJsonReader.parse(geojsonMultiLineStringGeometry)
       result.get.apply(0).toString must be === "JtsMultiLineString(MULTILINESTRING ((100 0, 101 1), (102 2, 103 3)),None)"
+    }
+
+    it("should parse a feature collection") {
+      println("**** FEATURE COLLECTION ****")
+      val result = GeoJsonReader.parse(geojsonFeatureCollection).get
+      result.length should be === 2 
+
     }
   }
 }
