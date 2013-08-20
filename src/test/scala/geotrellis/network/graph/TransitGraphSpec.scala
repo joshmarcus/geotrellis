@@ -8,6 +8,8 @@ import org.scalatest.matchers.ShouldMatchers
 
 import scala.collection.mutable
 
+import scala.language.postfixOps
+
 class PackedGraphSpec extends FunSpec
                          with ShouldMatchers {
   describe("PackedGraph") {
